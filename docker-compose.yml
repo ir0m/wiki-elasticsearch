@@ -1,36 +1,57 @@
 services:
-  es:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
-    container_name: es
+  elasticsearch:
+    container_name: elasticsearch
     environment:
-      - xpack.security.enabled=false
       - discovery.type=single-node
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    mem_limit: ${MEM_LIMIT}
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    ports:
-      - ${ES_PORT}:9200
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "xpack.security.http.ssl.enabled=false"
+    build:
+      context: ./elasticsearch 
     volumes:
-      - es-data:/usr/share/elasticsearch/data
+      - esdata:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - elastic-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    image: docker.elastic.co/kibana/kibana:8.14.1
     container_name: kibana
     ports:
-      - ${KIBANA_PORT}:5601
-    environment:
-      - ELASTICSEARCH_HOSTS=http://es:9200
-      - xpack.security.enabled=true
-      - xpack.security.authc.providers=[]
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
-      - I18N_LOCALE=${I18N_LOCALE}
-    mem_limit: ${MEM_LIMIT}
+      - "5601:5601"
     depends_on:
-      - es
+      - elasticsearch
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - elastic-net
+
+  crawler:
+    build: ./crawler  # ./crawler/Dockerfile を使ってビルド
+    container_name: crawler
+    depends_on:
+      elasticsearch:
+        condition: service_healthy # Elasticsearchが正常起動してから開始
+    volumes:
+      # ホストのpukiwiki_dataをコンテナの/pukiwiki_dataにマウント
+      - ./pukiwiki_data:/pukiwiki_data
+    # 起動時にインデックス作成と初回クロールを実行
+    # 2回目以降は 'python crawler.py crawl' のみ実行すればOK
+    command: >
+      sh -c "sleep 10 && python crawler.py add-index && python crawler.py crawl"
+    networks:
+      - elastic-net
+
 volumes:
-  es-data:
+  esdata:
     driver: local
+
+networks:
+  elastic-net:
+    driver: bridge

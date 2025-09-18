@@ -1,0 +1,27 @@
+{
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "kuromoji_analyzer": {
+          "type": "custom",
+          "tokenizer": "kuromoji_tokenizer"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "title": {
+        "type": "text",
+        "analyzer": "kuromoji_analyzer"
+      },
+      "body": {
+        "type": "text",
+        "analyzer": "kuromoji_analyzer"
+      },
+      "modified": {
+        "type": "date"
+      }
+    }
+  }
+}
