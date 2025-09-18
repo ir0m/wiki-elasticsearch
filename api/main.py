@@ -4,6 +4,7 @@ from elasticsearch import Elasticsearch
 from contextlib import asynccontextmanager
 import uvicorn
 from typing import Optional
+from fastapi.responses import JSONResponse
 
 # --- 設定 ---
 # ご自身の環境に合わせて変更してください
@@ -124,6 +125,57 @@ async def search_wiki(q: Optional[str] = Query(None, description="検索キー�
 
     except Exception as e:
         # Elasticsearchからのエラーやその他の例外をハンドル
+        raise HTTPException(status_code=500, detail=f"An error occurred during the search: {str(e)}")
+
+@app.get("/search_file_list", tags=["Search"])
+async def search_file_list(
+    q: str = Query(..., description="検索キーワード", min_length=1)
+) -> JSONResponse:
+    """
+    指定キーワードでファイルリストを検索し、ヒット数順に返す。
+    """
+    if es_client is None:
+        raise HTTPException(status_code=503, detail="Elasticsearch service is unavailable.")
+    if not q:
+        raise HTTPException(status_code=400, detail="Query parameter 'q' is required.")
+
+    try:
+        query = {
+            "query": {
+                "match": {
+                    "body": {
+                        "query": q,
+                        "operator": "and"
+                    }
+                }
+            },
+            "size": 100
+        }
+        response = es_client.search(index=INDEX_NAME, body=query)
+        results = []
+        for hit in response['hits']['hits']:
+            body = hit['_source'].get('body', '')
+            if isinstance(body, list):
+                body_text = "\n".join(body)
+            else:
+                body_text = body
+            # 検索語ごとにカウント
+            count = sum(body_text.lower().count(word.lower()) for word in q.split())
+            title = hit['_source'].get('title') or hit["_id"]
+            results.append({
+                "id": hit["_id"],
+                "title": title,
+                "count": count,
+                "score": hit.get("_score", 0)
+            })
+        # スコア順で降順ソート
+        sorted_results = sorted(results, key=lambda x: (x["score"], x["count"]), reverse=True)
+        return JSONResponse(content={
+            "query": q,
+            "total": len(sorted_results),
+            "results": sorted_results
+        })
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred during the search: {str(e)}")
 
 @app.get("/", tags=["Root"])
