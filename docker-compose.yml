@@ -44,7 +44,7 @@ services:
     # 起動時にインデックス作成と初回クロールを実行
     # 2回目以降は 'python crawler.py crawl' のみ実行すればOK
     command: >
-      sh -c "sleep 10 && python crawler.py add-index && python crawler.py crawl"
+      sh -c "sleep 10 && python crawler.py add-index && while true; do python crawler.py crawl; sleep 900; done"
     networks:
       - elastic-net
 
